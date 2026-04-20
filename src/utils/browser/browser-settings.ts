@@ -1,8 +1,9 @@
 import * as path from 'path';
 import type { BrowserConfig } from '../../config/unified-config-types';
-import { getCcsDir } from '../config-manager';
+import { getCcsDir, getCcsPathDisplay } from '../config-manager';
 import { expandPath } from '../helpers';
 import { type BrowserRuntimeEnv, resolveBrowserRuntimeEnv } from './chrome-reuse';
+import { getNodePlatformKey } from './platform';
 
 export type BrowserOverrideSource = 'CCS_BROWSER_USER_DATA_DIR' | 'CCS_BROWSER_PROFILE_DIR';
 
@@ -13,6 +14,12 @@ export interface EffectiveClaudeBrowserAttachConfig {
   userDataDir: string;
   devtoolsPort: number;
   hasExplicitDevtoolsPort: boolean;
+}
+
+export interface BrowserLaunchCommands {
+  darwin: string;
+  linux: string;
+  win32: string;
 }
 
 export function getRecommendedBrowserUserDataDir(): string {
@@ -26,6 +33,52 @@ export interface BrowserAttachRuntimeResolution {
 
 export function resolveBrowserUserDataDir(value?: string): string | undefined {
   return value?.trim() ? expandPath(value) : undefined;
+}
+
+export function buildBrowserLaunchCommands(
+  userDataDir: string,
+  devtoolsPort: number
+): BrowserLaunchCommands {
+  const quotedPath = JSON.stringify(userDataDir);
+  return {
+    darwin: `open -na "Google Chrome" --args --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`,
+    linux: `google-chrome --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`,
+    win32: `chrome.exe --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`,
+  };
+}
+
+export function isManagedClaudeBrowserAttachConfig(
+  config: EffectiveClaudeBrowserAttachConfig
+): boolean {
+  return (
+    config.source === 'config' &&
+    path.resolve(config.userDataDir) === path.resolve(getRecommendedBrowserUserDataDir())
+  );
+}
+
+export function buildManagedBrowserAttachSetupOptions(
+  config: EffectiveClaudeBrowserAttachConfig
+): string[] {
+  const platform = getNodePlatformKey();
+  const displayManagedDir = getCcsPathDisplay('browser', 'chrome-user-data');
+  const launchCommand = buildBrowserLaunchCommands(displayManagedDir, config.devtoolsPort)[
+    platform
+  ];
+  return [
+    '  Run `ccs browser doctor` to finish setup.',
+    `  Quick launch (${platform}): ${launchCommand}`,
+    `  Advanced: edit ${getCcsPathDisplay('config.yaml')} or set CCS_BROWSER_USER_DATA_DIR / CCS_BROWSER_DEVTOOLS_PORT`,
+  ];
+}
+
+function buildManagedBrowserAttachWarning(config: EffectiveClaudeBrowserAttachConfig): string {
+  return [
+    'Claude Browser Attach is not ready yet.',
+    `  Managed user-data dir: ${getCcsPathDisplay('browser', 'chrome-user-data')}`,
+    '  CCS will continue without browser tools for this launch.',
+    '',
+    ...buildManagedBrowserAttachSetupOptions(config),
+  ].join('\n');
 }
 
 export function getBrowserAttachOverride(env: NodeJS.ProcessEnv = process.env): {
@@ -103,13 +156,23 @@ export async function resolveOptionalBrowserAttachRuntime(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const usesManagedDefaultDir =
-      config.source === 'config' &&
-      path.resolve(config.userDataDir) === path.resolve(getRecommendedBrowserUserDataDir());
+    const usesManagedDefaultDir = isManagedClaudeBrowserAttachConfig(config);
 
     if (usesManagedDefaultDir && message.includes('Chrome profile directory is invalid')) {
       return {
-        warning: `Claude Browser Attach is enabled, but the managed browser profile does not exist yet (${config.userDataDir}). Launching without browser tools. Run \`ccs browser doctor\` to finish setup.`,
+        warning: buildManagedBrowserAttachWarning(config),
+      };
+    }
+
+    if (usesManagedDefaultDir && message.includes('Chrome reuse metadata not found')) {
+      return {
+        warning: buildManagedBrowserAttachWarning(config),
+      };
+    }
+
+    if (usesManagedDefaultDir && message.includes('Chrome DevTools endpoint is unreachable')) {
+      return {
+        warning: buildManagedBrowserAttachWarning(config),
       };
     }
 

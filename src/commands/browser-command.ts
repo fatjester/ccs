@@ -1,4 +1,5 @@
 import { getBrowserStatus, type BrowserStatusPayload } from '../utils/browser';
+import { getCcsPathDisplay } from '../utils/config-manager';
 import { getNodePlatformKey } from '../utils/browser/platform';
 import { color, dim, header, initUI, subheader } from '../utils/ui';
 
@@ -44,11 +45,16 @@ function writeClaudeStatus(
   writeLine: HelpWriter,
   includeLaunchGuidance: boolean
 ): void {
+  const userDataDirDisplay =
+    status.effectiveUserDataDir === status.recommendedUserDataDir
+      ? getCcsPathDisplay('browser', 'chrome-user-data')
+      : status.effectiveUserDataDir;
+
   writeLine(subheader('Claude Browser Attach'));
   writeLine(`  State: ${status.state}`);
   writeLine(`  Enabled: ${status.enabled ? 'yes' : 'no'}`);
   writeLine(`  Source: ${status.source}${status.overrideActive ? ' (env override active)' : ''}`);
-  writeLine(`  User data dir: ${status.effectiveUserDataDir}`);
+  writeLine(`  User data dir: ${userDataDirDisplay}`);
   writeLine(`  DevTools port: ${status.devtoolsPort}`);
   writeLine(`  Managed MCP: ${status.managedMcpServerName}`);
   writeLine(`  Managed path: ${status.managedMcpServerPath}`);

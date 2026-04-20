@@ -107,8 +107,22 @@ export function getCcsDirSource(): [string, string] {
  * Keeps the default path concise while preserving explicit overrides.
  */
 export function getCcsDirDisplay(): string {
+  return getCcsPathDisplay();
+}
+
+/**
+ * Get a CCS path as a user-facing display path.
+ * Keeps the default location concise while preserving explicit overrides.
+ */
+export function getCcsPathDisplay(...segments: string[]): string {
   const [source, dir] = getCcsDirSource();
-  return source === 'default' ? '~/.ccs' : dir;
+  if (source === 'default') {
+    return process.platform === 'win32'
+      ? path.win32.join('%USERPROFILE%\\.ccs', ...segments)
+      : path.posix.join('~/.ccs', ...segments.map((segment) => segment.replace(/\\/g, '/')));
+  }
+
+  return path.join(dir, ...segments);
 }
 
 /**

@@ -1,10 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { mutateUnifiedConfig } from '../../../../src/config/unified-config-loader';
+import {
+  getBrowserConfig,
+  mutateUnifiedConfig,
+} from '../../../../src/config/unified-config-loader';
 import * as chromeReuse from '../../../../src/utils/browser/chrome-reuse';
 import { getBrowserStatus } from '../../../../src/utils/browser/browser-status';
+import {
+  getEffectiveClaudeBrowserAttachConfig,
+  resolveOptionalBrowserAttachRuntime,
+} from '../../../../src/utils/browser/browser-settings';
 import * as codexDetector from '../../../../src/targets/codex-detector';
 
 describe('browser status', () => {
@@ -131,6 +138,63 @@ describe('browser status', () => {
       runtimeSpy.mockRestore();
       codexSpy.mockRestore();
     }
+  });
+
+  it('returns a structured warning when the managed browser dir does not exist yet', async () => {
+    mutateUnifiedConfig((config) => {
+      config.browser = {
+        claude: {
+          enabled: true,
+          user_data_dir: '',
+          devtools_port: 9222,
+        },
+        codex: {
+          enabled: true,
+        },
+      };
+    });
+
+    const resolution = await resolveOptionalBrowserAttachRuntime(
+      getEffectiveClaudeBrowserAttachConfig(getBrowserConfig())
+    );
+
+    expect(resolution.runtimeEnv).toBeUndefined();
+    expect(resolution.warning).toContain('Claude Browser Attach is not ready yet.');
+    expect(resolution.warning).toContain(
+      `Managed user-data dir: ${join(tempHome, '.ccs', 'browser', 'chrome-user-data')}`
+    );
+    expect(resolution.warning).toContain('CCS will continue without browser tools for this launch.');
+    expect(resolution.warning).toContain('ccs browser doctor');
+    expect(resolution.warning).toContain('.ccs/config.yaml');
+  });
+
+  it('returns the same structured warning when the managed browser dir exists but no attach session is running', async () => {
+    mutateUnifiedConfig((config) => {
+      config.browser = {
+        claude: {
+          enabled: true,
+          user_data_dir: '',
+          devtools_port: 9222,
+        },
+        codex: {
+          enabled: true,
+        },
+      };
+    });
+    mkdirSync(join(tempHome, '.ccs', 'browser', 'chrome-user-data'), { recursive: true });
+
+    const resolution = await resolveOptionalBrowserAttachRuntime(
+      getEffectiveClaudeBrowserAttachConfig(getBrowserConfig())
+    );
+
+    expect(resolution.runtimeEnv).toBeUndefined();
+    expect(resolution.warning).toContain('Claude Browser Attach is not ready yet.');
+    expect(resolution.warning).toContain(
+      `Managed user-data dir: ${join(tempHome, '.ccs', 'browser', 'chrome-user-data')}`
+    );
+    expect(resolution.warning).toContain('CCS will continue without browser tools for this launch.');
+    expect(resolution.warning).toContain('ccs browser doctor');
+    expect(resolution.warning).toContain('CCS_BROWSER_USER_DATA_DIR / CCS_BROWSER_DEVTOOLS_PORT');
   });
 
   it('reports browser_not_running when attach metadata is missing', async () => {

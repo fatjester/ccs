@@ -1,18 +1,17 @@
 import { getBrowserConfig } from '../../config/unified-config-loader';
+import { getCcsPathDisplay } from '../config-manager';
 import { getCodexBinaryInfo } from '../../targets/codex-detector';
 import { type BrowserRuntimeEnv, resolveBrowserRuntimeEnv } from './chrome-reuse';
 import { getBrowserMcpServerName, getBrowserMcpServerPath } from './mcp-installer';
 import { getNodePlatformKey } from './platform';
 import {
+  buildBrowserLaunchCommands,
+  buildManagedBrowserAttachSetupOptions,
+  type BrowserLaunchCommands,
   getEffectiveClaudeBrowserAttachConfig,
   getRecommendedBrowserUserDataDir,
+  isManagedClaudeBrowserAttachConfig,
 } from './browser-settings';
-
-export interface BrowserLaunchCommands {
-  darwin: string;
-  linux: string;
-  win32: string;
-}
 
 export interface ClaudeBrowserStatus {
   enabled: boolean;
@@ -60,7 +59,7 @@ async function buildClaudeBrowserStatus(
   browserConfig = getBrowserConfig()
 ): Promise<ClaudeBrowserStatus> {
   const effective = getEffectiveClaudeBrowserAttachConfig(browserConfig);
-  const launchCommands = buildLaunchCommands(effective.userDataDir, effective.devtoolsPort);
+  const launchCommands = buildBrowserLaunchCommands(effective.userDataDir, effective.devtoolsPort);
   const base: Omit<ClaudeBrowserStatus, 'state' | 'title' | 'detail' | 'nextStep'> = {
     enabled: effective.enabled,
     source: effective.source,
@@ -80,8 +79,7 @@ async function buildClaudeBrowserStatus(
       title: 'Claude Browser Attach is disabled.',
       detail:
         'CCS will not provision the managed browser MCP runtime for Claude launches until this lane is enabled.',
-      nextStep:
-        'Enable Claude Browser Attach in Settings > Browser or in ~/.ccs/config.yaml, then rerun `ccs browser doctor`.',
+      nextStep: `Enable Claude Browser Attach in Settings > Browser or in ${getCcsPathDisplay('config.yaml')}, then rerun \`ccs browser doctor\`.`,
     };
   }
 
@@ -108,7 +106,9 @@ async function buildClaudeBrowserStatus(
         state: 'path_missing',
         title: 'Claude Browser Attach path is missing.',
         detail: message,
-        nextStep: `Create or choose a Chrome user-data directory, then launch Chrome with attach mode enabled. Example: ${launchCommands[getNodePlatformKey()]}`,
+        nextStep: isManagedClaudeBrowserAttachConfig(effective)
+          ? buildManagedBrowserAttachSetupOptions(effective).join('\n')
+          : `Create or choose a Chrome user-data directory, then launch Chrome with attach mode enabled. Example: ${launchCommands[getNodePlatformKey()]}`,
       };
     }
 
@@ -118,7 +118,9 @@ async function buildClaudeBrowserStatus(
         state: 'browser_not_running',
         title: 'Claude Browser Attach could not find a running browser session.',
         detail: message,
-        nextStep: `Start Chrome with remote debugging and the configured user-data dir. Example: ${launchCommands[getNodePlatformKey()]}`,
+        nextStep: isManagedClaudeBrowserAttachConfig(effective)
+          ? buildManagedBrowserAttachSetupOptions(effective).join('\n')
+          : `Start Chrome with remote debugging and the configured user-data dir. Example: ${launchCommands[getNodePlatformKey()]}`,
       };
     }
 
@@ -127,7 +129,9 @@ async function buildClaudeBrowserStatus(
       state: 'endpoint_unreachable',
       title: 'Claude Browser Attach could not reach the DevTools endpoint.',
       detail: message,
-      nextStep: `Restart the attach browser session or confirm the configured port. Example: ${launchCommands[getNodePlatformKey()]}`,
+      nextStep: isManagedClaudeBrowserAttachConfig(effective)
+        ? buildManagedBrowserAttachSetupOptions(effective).join('\n')
+        : `Restart the attach browser session or confirm the configured port. Example: ${launchCommands[getNodePlatformKey()]}`,
     };
   }
 }
@@ -175,14 +179,5 @@ function buildCodexBrowserStatus(browserConfig = getBrowserConfig()): CodexBrows
     supportsConfigOverrides,
     binaryPath: binaryInfo.path,
     version: binaryInfo.version,
-  };
-}
-
-function buildLaunchCommands(userDataDir: string, devtoolsPort: number): BrowserLaunchCommands {
-  const quotedPath = JSON.stringify(userDataDir);
-  return {
-    darwin: `open -na "Google Chrome" --args --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`,
-    linux: `google-chrome --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`,
-    win32: `chrome.exe --remote-debugging-port=${devtoolsPort} --user-data-dir=${quotedPath}`,
   };
 }
