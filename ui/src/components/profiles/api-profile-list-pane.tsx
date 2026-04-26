@@ -98,10 +98,7 @@ export function ApiProfileListPane({
 
       {/* Toolbar */}
       <div className="shrink-0 border-b bg-background/80 p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            {t('apiProfiles.sidebarSubtitle')}
-          </p>
+        <div className="mb-2 flex items-center justify-end gap-2">
           <div className="flex shrink-0 items-center gap-1">
             <Button
               size="sm"
